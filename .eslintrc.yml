@@ -1,0 +1,16 @@
+extends:
+  - "plugin:@typescript-eslint/recommended"
+rules:
+  no-console: 1
+  no-undef: "off"
+  "@typescript-eslint/no-var-requires": "off"
+plugins:
+  - "@typescript-eslint"
+parserOptions:
+  parser: "@typescript-eslint/parser"
+  tsconfigRootDir: "./src"
+  ecmaFeatures:
+    jsx: false
+  useJSXTextNode: false
+  ecmaVersion: 11
+  sourceType: "module"
