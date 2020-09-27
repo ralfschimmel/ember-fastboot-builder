@@ -4,7 +4,7 @@ import prepareCache from './prepare-cache'
 
 // Docs: https://github.com/zeit/now/blob/master/DEVELOPING_A_RUNTIME.md
 module.exports = {
-  version: 2,
+  version: 3,
   build,
   config,
   prepareCache
