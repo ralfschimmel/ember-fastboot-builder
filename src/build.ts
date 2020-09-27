@@ -34,33 +34,29 @@ interface BuilderOutput {
   routes: Route[];
 }
 
-export async function build({
-  files,
-  entrypoint,
-  workPath,
-  config = {},
-  meta = {},
-}: BuildOptions): Promise<BuilderOutput> {
+export async function build(opts: BuildOptions): Promise<BuilderOutput> {
+  const { files, entrypoint, workPath, repoRootPath, config = {}, meta = {} } = opts
+
   // ----------------- Prepare build -----------------
   startStep("Prepare build");
 
   // Validate entrypoint
   validateEntrypoint(entrypoint);
 
-  // Entry directory
-  const entryDir = path.dirname(entrypoint);
-  consola.log("entryDir:", entryDir);
-
-  // Compute rootDir
-  const rootDir = path.join(workPath, entryDir);
-  consola.log("rootDir:", rootDir);
+  
+  // Get Nuxt directory
+  const entrypointDirname = path.dirname(entrypoint)
+  // Get Nuxt path
+  const entrypointPath = path.join(workPath, entrypointDirname)
+  // Get folder where we'll store node_modules
+  const modulesPath = path.join(repoRootPath || entrypointPath, 'node_modules')
 
   // Create a real filesystem
   consola.log("Downloading files...");
   await download(files, workPath, meta);
 
   // Change cwd to rootDir
-  process.chdir(rootDir);
+  process.chdir(entrypointPath);
   consola.log("Working directory:", process.cwd());
 
   // Read package.json
@@ -68,11 +64,11 @@ export async function build({
   try {
     pkg = await readJSON("package.json");
   } catch (e) {
-    throw new Error(`Can not read package.json from ${rootDir}`);
+    throw new Error(`Can not read package.json from ${entrypointPath}`);
   }
 
   // Node version
-  const nodeVersion = await getNodeVersion(rootDir, undefined, config, meta);
+  const nodeVersion = await getNodeVersion(entrypointPath, undefined, config, meta);
   consola.log("nodeVersion: ", nodeVersion);
   consola.log("meta: ", meta);
   const spawnOpts = getSpawnOptions(meta, nodeVersion);
@@ -98,7 +94,7 @@ export async function build({
   }
 
   // Cache dir
-  const cacheDir = path.resolve(rootDir, ".now_cache");
+  const cacheDir = path.resolve(entrypointPath, ".now_cache");
   await fs.mkdirp(cacheDir);
 
   const yarnCacheDir = path.join(cacheDir, "yarn");
@@ -117,7 +113,7 @@ export async function build({
       "--frozen-lockfile",
       "--non-interactive",
       "--production=false",
-      `--modules-folder=${rootDir}/node_modules`,
+      `--modules-folder=${modulesPath}`,
       `--cache-folder=${yarnCacheDir}`,
     ],
     { ...spawnOpts, env: { ...spawnOpts.env, NODE_ENV: "development" } }
@@ -162,7 +158,7 @@ export async function build({
       "--pure-lockfile",
       "--non-interactive",
       "--production=true",
-      `--modules-folder=${rootDir}/node_modules`,
+      `--modules-folder=${modulesPath}`,
       `--cache-folder=${yarnCacheDir}`,
     ],
     spawnOpts
@@ -177,14 +173,14 @@ export async function build({
   startStep("Collect artifacts");
 
   // Client dist files
-  const clientDistDir = path.join(rootDir, "dist");
+  const clientDistDir = path.join(entrypointPath, "dist");
   const clientDistFiles = await globAndPrefix("**", clientDistDir, publicPath);
   consola.log('clientDistDir', clientDistDir);
   consola.log('clientDistFiles', clientDistFiles);
 
 
   // node_modules_prod // todo prune node_modules for prod
-  const nodeModulesDir = path.join(rootDir, "node_modules");
+  const nodeModulesDir = path.join(entrypointPath, "node_modules");
   const nodeModules = await globAndPrefix("**", nodeModulesDir, "node_modules");
 
   // Lambdas
@@ -211,7 +207,7 @@ export async function build({
   ];
 
   for (const pattern of serverFiles) {
-    const files = await glob(pattern, rootDir);
+    const files = await glob(pattern, entrypointPath);
     Object.assign(launcherFiles, files);
   }
 

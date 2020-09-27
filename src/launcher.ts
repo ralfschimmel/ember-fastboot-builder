@@ -27,7 +27,7 @@ const readyPromise = fastBootServer.start().then(() => {
 })
 
 // Create bridge and start listening
-const { Server } = require('http') // eslint-disable-line import/order
+const { Server } = require('http')
 const { Bridge } = require('./now__bridge.js')
 
 const server = new (Server as typeof http.Server)(
