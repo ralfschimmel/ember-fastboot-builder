@@ -5,5 +5,5 @@ interface BuilderOutput {
     output: Record<string, Lambda | File | FileFsRef>;
     routes: Route[];
 }
-export declare function build(opts: BuildOptions): Promise<BuilderOutput>;
+export declare function build({ files, entrypoint, workPath, repoRootPath, config, meta, }: BuildOptions): Promise<BuilderOutput>;
 export {};
