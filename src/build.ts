@@ -114,20 +114,21 @@ export async function build({
   // ----------------- Install devDependencies -----------------
   startStep("Install devDependencies");
 
+  // assert(path.isAbsolute(entrypointPath));
+  // debug(`Installing to ${entrypointPath}`);
+
   // Install all dependencies
   await exec(
     "yarn",
     [
       "install",
       "--prefer-offline",
-      "--pure-lockfile",
       "--frozen-lockfile",
       "--non-interactive",
       "--production=false",
-      `--modules-folder=${modulesPath}`,
       `--cache-folder=${yarnCacheDir}`,
     ],
-    { ...spawnOpts, env: { ...spawnOpts.env, NODE_ENV: "development" } }
+    { ...spawnOpts, env: { ...spawnOpts.env, NODE_ENV: "development" }, cwd: entrypointPath }
   );
 
   // ----------------- Pre build -----------------
@@ -166,10 +167,8 @@ export async function build({
     [
       "install",
       "--prefer-offline",
-      "--pure-lockfile",
       "--non-interactive",
       "--production=true",
-      `--modules-folder=${modulesPath}`,
       `--cache-folder=${yarnCacheDir}`,
     ],
     spawnOpts
