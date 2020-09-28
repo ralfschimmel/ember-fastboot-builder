@@ -34,9 +34,15 @@ interface BuilderOutput {
   routes: Route[];
 }
 
-export async function build(opts: BuildOptions): Promise<BuilderOutput> {
-  const { files, entrypoint, workPath, repoRootPath, config = {}, meta = {} } = opts
-
+export async function build({
+  files,
+  entrypoint,
+  workPath,
+  repoRootPath,
+  config = {},
+  meta = {},
+}: BuildOptions): Promise<BuilderOutput> {
+  
   // ----------------- Prepare build -----------------
   startStep("Prepare build");
 

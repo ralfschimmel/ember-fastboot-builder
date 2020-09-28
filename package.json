@@ -1,9 +1,9 @@
 {
-  "name": "ember-fastboot-builder",
-  "version": "0.0.1",
+  "name": "@gynzy/ember-fastboot-builder",
+  "version": "0.0.3",
   "license": "MIT",
-  "repository": "ember-fastboot-builder",
-  "main": "lib/index.js",
+  "repository": "git://github.com/ralfschimmel/ember-fastboot-builder.git",
+  "main": "./lib/index",
   "files": [
     "lib"
   ],
