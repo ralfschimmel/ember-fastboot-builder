@@ -27,6 +27,7 @@ import {
   MutablePackageJson,
   readJSON,
 } from "./utils";
+import { report } from "process";
 
 interface BuilderOutput {
   watch?: string[];
@@ -107,6 +108,10 @@ export async function build({
   // assert(path.isAbsolute(entrypointPath));
   consola.log(`Installing to ${entrypointPath}`);
 
+  // Change cwd to package rootDir
+  // process.chdir(entrypointPath);
+  // consola.log("Working directory:", process.cwd());
+  
   // Install all dependencies
   await exec(
     "yarn",
@@ -117,7 +122,7 @@ export async function build({
       "--production=false",
       `--cache-folder=${yarnCacheDir}`,
     ],
-    { ...spawnOpts, env: { ...spawnOpts.env, NODE_ENV: "development" }, cwd: entrypointPath }
+    { ...spawnOpts, env: { ...spawnOpts.env, NODE_ENV: "development" }, cwd: repoRootPath }
   );
 
   // ----------------- Pre build -----------------
@@ -150,6 +155,7 @@ export async function build({
   // Only keep core dependency
   // preparePkgForProd(pkg);
   // await fs.writeJSON("package.json", pkg);
+
 
   await exec(
     "yarn",
