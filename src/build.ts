@@ -52,10 +52,14 @@ export async function build({
   
   // Get Nuxt directory
   const entrypointDirname = path.dirname(entrypoint)
+  consola.log('entrypointDirname:', entrypointDirname);
   // Get Nuxt path
   const entrypointPath = path.join(workPath, entrypointDirname)
+  consola.log('entrypointPath:', entrypointPath);
   // Get folder where we'll store node_modules
   const modulesPath = path.join(repoRootPath || entrypointPath, 'node_modules')
+
+  consola.log('modulesPath:', modulesPath);
 
   // Create a real filesystem
   consola.log("Downloading files...");
