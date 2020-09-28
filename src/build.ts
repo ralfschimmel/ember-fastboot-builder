@@ -1,38 +1,127 @@
-import path from "path";
+// import { fork, spawn } from 'child_process';
+
+// import {
+//   readFileSync,
+//   lstatSync,
+//   readlinkSync,
+//   statSync,
+//   promises as fsp,
+// } from 'fs';
+
+import {
+  // basename,
+  dirname,
+  // extname,
+  join,
+  // relative,
+  // resolve,
+  sep,
+  parse as parsePath,
+} from "path";
+
 import fs from "fs-extra";
 import consola from "consola";
-import execa from 'execa'
+// import execa from 'execa'
 
 import {
   createLambda,
+  debug,
   download,
   FileFsRef,
   FileBlob,
   glob,
   getNodeVersion,
   getSpawnOptions,
+  runNpmInstall,
   BuildOptions,
   Lambda,
   File,
+  Files,
+  Config,
+  Meta,
 } from "@vercel/build-utils";
 import { Route } from "@vercel/routing-utils";
 
 import {
   exec,
-  validateEntrypoint,
+  // validateEntrypoint,
   globAndPrefix,
   // preparePkgForProd,
   startStep,
   endStep,
-  MutablePackageJson,
-  readJSON,
+  // MutablePackageJson,
+  // readJSON,
 } from "./utils";
-import { report } from "process";
+// import { report } from "process";
 
 interface BuilderOutput {
   watch?: string[];
   output: Record<string, Lambda | File | FileFsRef>;
   routes: Route[];
+}
+
+interface DownloadOptions {
+  files: Files;
+  entrypoint: string;
+  workPath: string;
+  config: Config;
+  meta: Meta;
+}
+
+async function downloadInstallAndBundle({
+  files,
+  entrypoint,
+  workPath,
+  config,
+  meta,
+}: DownloadOptions, isProduction=false) {
+  const downloadedFiles = await download(files, workPath, meta);
+
+  const entrypointFsDirname = join(workPath, dirname(entrypoint));
+  const nodeVersion = await getNodeVersion(
+    entrypointFsDirname,
+    undefined,
+    config,
+    meta
+  );
+  const spawnOpts = getSpawnOptions(meta, nodeVersion);
+
+  if (meta.isDev) {
+    debug("Skipping dependency installation because dev mode is enabled");
+  } else {
+    const installTime = Date.now();
+    console.log("Installing dependencies...");
+    const args = ["--prefer-offline"];
+    if (isProduction) {
+      args.push('--production');
+      args.push('--force');
+    }
+    await runNpmInstall(
+      entrypointFsDirname,
+      args,
+      spawnOpts,
+      meta
+    );
+    debug(`Install complete [${Date.now() - installTime}ms]`);
+  }
+
+  const entrypointPath = downloadedFiles[entrypoint].fsPath;
+  return { entrypointPath, entrypointFsDirname, nodeVersion, spawnOpts };
+}
+
+function getAWSLambdaHandler(entrypoint: string, config: Config) {
+  if (config.awsLambdaHandler) {
+    return config.awsLambdaHandler as string;
+  }
+
+  if (process.env.NODEJS_AWS_HANDLER_NAME) {
+    const { dir, name } = parsePath(entrypoint);
+    return `${dir}${dir ? sep : ""}${name}.${
+      process.env.NODEJS_AWS_HANDLER_NAME
+    }`;
+  }
+
+  return "index";
 }
 
 export async function build({
@@ -43,87 +132,88 @@ export async function build({
   config = {},
   meta = {},
 }: BuildOptions): Promise<BuilderOutput> {
-  // const baseDir = repoRootPath || workPath;
+  const shouldAddHelpers = !(
+    config.helpers === false || process.env.NODEJS_HELPERS === "0"
+  );
+  const baseDir = repoRootPath || workPath;
+  const awsLambdaHandler = getAWSLambdaHandler(entrypoint, config);
 
-  
   // ----------------- Prepare build -----------------
   startStep("Prepare build");
 
   // Validate entrypoint
-  validateEntrypoint(entrypoint);
+  // validateEntrypoint(entrypoint);
 
-  
-  // Get Nuxt directory
-  const entrypointDirname = path.dirname(entrypoint)
-  consola.log('entrypointDirname:', entrypointDirname);
-  // Get Nuxt path
-  const entrypointPath = path.join(workPath, entrypointDirname)
-  consola.log('entrypointPath:', entrypointPath);
-  consola.log('repoRootPath:', repoRootPath);
+  startStep("Install devDependencies");
+  const {
+    entrypointPath,
+    entrypointFsDirname,
+    nodeVersion,
+    spawnOpts,
+  } = await downloadInstallAndBundle({
+    files,
+    entrypoint,
+    workPath,
+    config,
+    meta,
+  }, false);
 
   // Create a real filesystem
-  consola.log("Downloading files...");
-  await download(files, workPath, meta);
-
-  // Change cwd to package rootDir
-  process.chdir(entrypointPath);
-  consola.log("Working directory:", process.cwd());
-
-  // Read package.json
-  let pkg: MutablePackageJson;
-  try {
-    pkg = await readJSON("package.json");
-  } catch (e) {
-    throw new Error(`Can not read package.json from ${entrypointPath}`);
-  }
-
-  // Node version
-  const nodeVersion = await getNodeVersion(entrypointPath, undefined, config, meta);
-  consola.log("nodeVersion: ", nodeVersion);
-  consola.log("meta: ", meta);
-  const spawnOpts = getSpawnOptions(meta, nodeVersion);
-  // consola.log("spawnOpts.env: ",spawnOpts.env);
-  // consola.log(await execa("node", ["-v"]));
-
-  // Detect npm (prefer yarn)
-  const isYarn = !fs.existsSync("package-lock.json");
-  consola.log("Using", isYarn ? "yarn" : "npm");
-
-
-  // Write .yarnclean
-  if (isYarn && !fs.existsSync(".yarnclean")) {
-    await fs.copyFile(path.join(__dirname, ".yarnclean"), ".yarnclean");
-  }
-
-  // Cache dir
-  const cacheDir = path.resolve(entrypointPath, ".now_cache");
-  await fs.mkdirp(cacheDir);
-
-  const yarnCacheDir = path.join(cacheDir, "yarn");
-  await fs.mkdirp(yarnCacheDir);
-
-  // ----------------- Install devDependencies -----------------
-  startStep("Install devDependencies");
-
-  // assert(path.isAbsolute(entrypointPath));
-  consola.log(`Installing to ${entrypointPath}`);
+  // consola.log("Downloading files...");
+  // await download(files, workPath, meta);
 
   // Change cwd to package rootDir
   // process.chdir(entrypointPath);
   // consola.log("Working directory:", process.cwd());
-  
+
+  // Read package.json
+  // let pkg: MutablePackageJson;
+  // try {
+  //   pkg = await readJSON("package.json");
+  // } catch (e) {
+  //   throw new Error(`Can not read package.json from ${entrypointPath}`);
+  // }
+
+  // consola.log("spawnOpts.env: ",spawnOpts.env);
+  // consola.log(await execa("node", ["-v"]));
+
+  // Detect npm (prefer yarn)
+  // const isYarn = !fs.existsSync("package-lock.json");
+  // consola.log("Using", isYarn ? "yarn" : "npm");
+
+  // Write .yarnclean
+  // if (isYarn && !fs.existsSync(".yarnclean")) {
+  //   await fs.copyFile(join(__dirname, ".yarnclean"), ".yarnclean");
+  // }
+
+  // Cache dir
+  // const cacheDir = resolve(entrypointPath, ".now_cache");
+  // await fs.mkdirp(cacheDir);
+
+  // const yarnCacheDir = join(cacheDir, "yarn");
+  // await fs.mkdirp(yarnCacheDir);
+
+  // ----------------- Install devDependencies -----------------
+
+  // assert(isAbsolute(entrypointPath));
+  // consola.log(`Installing to ${repoRootPath}`);
+
+  // Change cwd to package rootDir
+  // process.chdir(entrypointPath);
+  // consola.log("Working directory:", process.cwd());
+
   // Install all dependencies
-  await exec(
-    "yarn",
-    [
-      "install",
-      "--prefer-offline",
-      "--non-interactive",
-      "--production=false",
-      `--cache-folder=${yarnCacheDir}`,
-    ],
-    { ...spawnOpts, env: { ...spawnOpts.env, NODE_ENV: "development" }, cwd: repoRootPath }
-  );
+  // await exec(
+  //   "yarn",
+  //   [
+  //     "install",
+  //     "--prefer-offline",
+  //     "--non-interactive",
+  //     "--production=false",
+  //     `--cache-folder=${yarnCacheDir}`,
+  //   ],
+  //   { ...spawnOpts, env: { ...spawnOpts.env, NODE_ENV: "development" }, cwd: repoRootPath }
+  // );
 
   // ----------------- Pre build -----------------
   // if (pkg.scripts && Object.keys(pkg.scripts).includes('now-build')) {
@@ -144,54 +234,58 @@ export async function build({
   startStep("Ember build");
 
   const publicPath = "dist";
-  // const buildDir = nuxtConfigFile.buildDir ? path.relative(rootDir, nuxtConfigFile.buildDir) : '.nuxt'
-  const lambdaName = "index";
+  // const buildDir = nuxtConfigFile.buildDir ? relative(rootDir, nuxtConfigFile.buildDir) : '.nuxt'
 
   await exec("yarn", ["build"]);
 
-  // ----------------- Install dependencies -----------------
-  startStep("Install dependencies");
+  // ----------------- Prune dependencies -----------------
+  startStep("Prune dependencies");
+  await downloadInstallAndBundle({
+    files,
+    entrypoint,
+    workPath,
+    config,
+    meta,
+  }, true);
 
   // Only keep core dependency
   // preparePkgForProd(pkg);
   // await fs.writeJSON("package.json", pkg);
 
-
-  await exec(
-    "yarn",
-    [
-      "install",
-      "--prefer-offline",
-      "--non-interactive",
-      "--production=true",
-      `--cache-folder=${yarnCacheDir}`,
-    ],
-    spawnOpts
-  );
+  // await exec(
+  //   "yarn",
+  //   [
+  //     "install",
+  //     "--prefer-offline",
+  //     "--non-interactive",
+  //     "--production=true",
+  //     `--cache-folder=${yarnCacheDir}`,
+  //   ],
+  //   spawnOpts
+  // );
 
   // Cleanup .npmrc
-  if (process.env.NPM_AUTH_TOKEN) {
-    await fs.unlink(".npmrc");
-  }
+  // if (process.env.NPM_AUTH_TOKEN) {
+  //   await fs.unlink(".npmrc");
+  // }
 
   // ----------------- Collect artifacts -----------------
   startStep("Collect artifacts");
 
   // Client dist files
-  const clientDistDir = path.join(entrypointPath, "dist");
+  const clientDistDir = join(entrypointFsDirname, "dist");
   const clientDistFiles = await globAndPrefix("**", clientDistDir, publicPath);
-  consola.log('clientDistDir', clientDistDir);
-  consola.log('clientDistFiles', clientDistFiles);
-
+  consola.log("clientDistDir", clientDistDir);
+  consola.log("clientDistFiles", clientDistFiles);
 
   // node_modules_prod // todo prune node_modules for prod
-  const nodeModulesDir = path.join(entrypointPath, "node_modules");
+  const nodeModulesDir = join(entrypointFsDirname, "node_modules");
   const nodeModules = await globAndPrefix("**", nodeModulesDir, "node_modules");
 
   // Lambdas
   const lambdas: Record<string, Lambda> = {};
 
-  const launcherPath = path.join(__dirname, "launcher.js");
+  const launcherPath = join(__dirname, "launcher.js");
   const launcherSrc = await fs.readFile(launcherPath, "utf8");
 
   const launcherFiles = {
@@ -212,14 +306,14 @@ export async function build({
   ];
 
   for (const pattern of serverFiles) {
-    const files = await glob(pattern, entrypointPath);
+    const files = await glob(pattern, entrypointFsDirname);
     Object.assign(launcherFiles, files);
   }
 
-  consola.log('launcherFiles: ', launcherFiles);
+  consola.log("launcherFiles: ", launcherFiles);
 
   // lambdaName will be titled index, unless specified in nuxt.config.js
-  lambdas[lambdaName] = await createLambda({
+  lambdas[awsLambdaHandler] = await createLambda({
     handler: "now__launcher.launcher",
     runtime: nodeVersion.runtime,
     files: launcherFiles,
@@ -232,10 +326,9 @@ export async function build({
 
   endStep();
 
-  consola.log('lambdas: ', lambdas);
+  consola.log("lambdas: ", lambdas);
   // consola.log(clientDistFiles);
   // consola.log(clientDistFiles);
-
 
   return {
     output: {
