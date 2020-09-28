@@ -56,6 +56,7 @@ export async function build({
   // Get Nuxt path
   const entrypointPath = path.join(workPath, entrypointDirname)
   consola.log('entrypointPath:', entrypointPath);
+  consola.log('repoRootPath:', repoRootPath);
   // Get folder where we'll store node_modules
   const modulesPath = path.join(repoRootPath || entrypointPath, 'node_modules')
 
