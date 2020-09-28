@@ -42,6 +42,8 @@ export async function build({
   config = {},
   meta = {},
 }: BuildOptions): Promise<BuilderOutput> {
+  // const baseDir = repoRootPath || workPath;
+
   
   // ----------------- Prepare build -----------------
   startStep("Prepare build");
@@ -57,16 +59,12 @@ export async function build({
   const entrypointPath = path.join(workPath, entrypointDirname)
   consola.log('entrypointPath:', entrypointPath);
   consola.log('repoRootPath:', repoRootPath);
-  // Get folder where we'll store node_modules
-  const modulesPath = path.join(repoRootPath || entrypointPath, 'node_modules')
-
-  consola.log('modulesPath:', modulesPath);
 
   // Create a real filesystem
   consola.log("Downloading files...");
   await download(files, workPath, meta);
 
-  // Change cwd to rootDir
+  // Change cwd to package rootDir
   process.chdir(entrypointPath);
   consola.log("Working directory:", process.cwd());
 
@@ -84,20 +82,12 @@ export async function build({
   consola.log("meta: ", meta);
   const spawnOpts = getSpawnOptions(meta, nodeVersion);
   // consola.log("spawnOpts.env: ",spawnOpts.env);
-  consola.log(await execa("node", ["-v"]));
+  // consola.log(await execa("node", ["-v"]));
 
   // Detect npm (prefer yarn)
   const isYarn = !fs.existsSync("package-lock.json");
   consola.log("Using", isYarn ? "yarn" : "npm");
 
-  // Write .npmrc
-  if (process.env.NPM_AUTH_TOKEN) {
-    consola.log("Found NPM_AUTH_TOKEN in environment, creating .npmrc");
-    await fs.writeFile(
-      ".npmrc",
-      `//registry.npmjs.org/:_authToken=${process.env.NPM_AUTH_TOKEN}`
-    );
-  }
 
   // Write .yarnclean
   if (isYarn && !fs.existsSync(".yarnclean")) {
@@ -115,7 +105,7 @@ export async function build({
   startStep("Install devDependencies");
 
   // assert(path.isAbsolute(entrypointPath));
-  // debug(`Installing to ${entrypointPath}`);
+  consola.log(`Installing to ${entrypointPath}`);
 
   // Install all dependencies
   await exec(
@@ -123,7 +113,6 @@ export async function build({
     [
       "install",
       "--prefer-offline",
-      "--frozen-lockfile",
       "--non-interactive",
       "--production=false",
       `--cache-folder=${yarnCacheDir}`,
